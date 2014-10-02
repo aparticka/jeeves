@@ -41,8 +41,8 @@ public class MainActivity extends Activity implements View.OnClickListener {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-        Button speakButton = (Button) findViewById(R.id.btnSpeak);
-        speakButton.setOnClickListener(this);
+        Button btnStartSpeechRecognition = (Button) findViewById(R.id.btnStartVoiceRecognition);
+        btnStartSpeechRecognition.setOnClickListener(this);
         mTextViewCommand = (TextView) findViewById(R.id.textViewCommand);
         mTextViewStatus = (TextView) findViewById(R.id.textViewStatus);
         mRecognizer = SpeechRecognizer.createSpeechRecognizer(this);
@@ -282,7 +282,7 @@ public class MainActivity extends Activity implements View.OnClickListener {
 
     @Override
     public void onClick(View view) {
-        if (view.getId() == R.id.btnSpeak) {
+        if (view.getId() == R.id.btnStartVoiceRecognition) {
             Intent intent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
             intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
             mRecognizer.startListening(intent);

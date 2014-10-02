@@ -24,8 +24,8 @@
     <Button
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:text="Speak"
-        android:id="@+id/btnSpeak"
+        android:text="Beckon..."
+        android:id="@+id/btnStartVoiceRecognition"
         android:layout_gravity="bottom"
         android:background="#ff333333"
         android:textColor="@android:color/white"
