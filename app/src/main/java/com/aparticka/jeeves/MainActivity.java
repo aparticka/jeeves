@@ -8,10 +8,15 @@ import android.os.Bundle;
 import android.speech.RecognitionListener;
 import android.speech.RecognizerIntent;
 import android.speech.SpeechRecognizer;
+import android.support.v4.app.ActionBarDrawerToggle;
+import android.support.v4.widget.DrawerLayout;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
+import android.widget.AdapterView;
+import android.widget.ArrayAdapter;
 import android.widget.Button;
+import android.widget.ListView;
 import android.widget.TextView;
 
 import com.android.volley.DefaultRetryPolicy;
@@ -30,12 +35,15 @@ import java.util.HashMap;
 import java.util.Map;
 
 
-public class MainActivity extends Activity implements View.OnClickListener {
+public class MainActivity extends Activity implements View.OnClickListener, ListView.OnItemClickListener {
 
     protected SpeechRecognizer mRecognizer;
     protected TextView mTextViewCommand, mTextViewStatus;
     protected RequestQueue mRequestQueue;
     protected int mColorSuccess, mColorFailure, mColorTransparent;
+    protected DrawerLayout mLayoutDrawer;
+    protected ListView mListViewDrawerLeft;
+    protected ActionBarDrawerToggle mDrawerToggle;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -51,6 +59,23 @@ public class MainActivity extends Activity implements View.OnClickListener {
         mColorSuccess = Color.parseColor("#aaffaa");
         mColorFailure = Color.parseColor("#ffaaaa");
         mColorTransparent = Color.parseColor("#00ffffff");
+
+        mLayoutDrawer = (DrawerLayout) findViewById(R.id.layoutDrawer);
+        mListViewDrawerLeft = (ListView) findViewById(R.id.listViewDrawerLeft);
+        mListViewDrawerLeft.setAdapter(new ArrayAdapter<String>(this, android.R.layout.simple_list_item_1, (String[])VoiceCommand.commandNames.values().toArray(new String[0])));
+        mListViewDrawerLeft.setOnItemClickListener(this);
+
+        mDrawerToggle = new ActionBarDrawerToggle(this, mLayoutDrawer, R.drawable.ic_launcher, R.string.drawer_open, R.string.drawer_close) {
+        };
+
+        mLayoutDrawer.setDrawerListener(mDrawerToggle);
+        getActionBar().setDisplayHomeAsUpEnabled(true);
+        getActionBar().setHomeButtonEnabled(true);
+    }
+
+    @Override
+    public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
+
     }
 
     class MyListener implements RecognitionListener {

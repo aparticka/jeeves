@@ -20,7 +20,7 @@ public class VoiceCommand {
     public static final int COMMAND_PAUSE = 20;
     public static final int COMMAND_UNPAUSE = 21;
 
-    protected static final Map<Integer, String> commandNames;
+    public static final Map<Integer, String> commandNames;
 
     static {
         Map<Integer, String> copyMap = new HashMap<Integer, String>();
@@ -47,7 +47,7 @@ public class VoiceCommand {
         this.argument = argument;
     }
 
-    protected String getCommandName(int command) {
+    public String getCommandName(int command) {
         return commandNames.containsKey(command) ? commandNames.get(command) : "N/A";
     }
 
