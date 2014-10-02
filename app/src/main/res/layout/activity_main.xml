@@ -1,0 +1,35 @@
+<LinearLayout
+    android:orientation="vertical"
+    android:layout_width="fill_parent"
+    android:layout_height="fill_parent"
+    xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textAppearance="?android:attr/textAppearanceLarge"
+        android:text=""
+        android:id="@+id/textViewCommand"
+        android:padding="@dimen/text_padding" />
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textAppearance="?android:attr/textAppearanceLarge"
+        android:text=""
+        android:id="@+id/textViewStatus"
+        android:padding="@dimen/text_padding"
+        android:paddingTop="0dp" />
+
+    <Button
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:text="Speak"
+        android:id="@+id/btnSpeak"
+        android:layout_gravity="bottom"
+        android:background="#ff333333"
+        android:textColor="@android:color/white"
+        android:textSize="@dimen/button_text_size"
+        android:textStyle="bold" />
+
+</LinearLayout>
