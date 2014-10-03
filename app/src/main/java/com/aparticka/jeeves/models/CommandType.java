@@ -20,6 +20,7 @@ public class CommandType {
     }
 
     public static String getCommandTypeName(int commandType) {
-        return commandTypeNames.containsKey(commandType) ? commandTypeNames.get(commandType) : "N/A";
+        return commandTypeNames.containsKey(commandType) ?
+                commandTypeNames.get(commandType) : "N/A";
     }
 }

@@ -1,5 +1,6 @@
 package com.aparticka.jeeves;
 
+import android.app.ActionBar;
 import android.app.Activity;
 import android.content.Intent;
 import android.graphics.Color;
@@ -9,6 +10,7 @@ import android.speech.RecognitionListener;
 import android.speech.RecognizerIntent;
 import android.speech.SpeechRecognizer;
 import android.support.v4.app.ActionBarDrawerToggle;
+import android.support.v4.view.GravityCompat;
 import android.support.v4.widget.DrawerLayout;
 import android.util.Log;
 import android.view.Menu;
@@ -39,14 +41,15 @@ import java.util.HashMap;
 import java.util.Map;
 
 
-public class MainActivity extends Activity implements View.OnClickListener, ListView.OnItemClickListener {
+public class MainActivity extends Activity
+        implements View.OnClickListener, ListView.OnItemClickListener {
 
     protected SpeechRecognizer mRecognizer;
     protected TextView mTextViewCommand, mTextViewStatus;
     protected RequestQueue mRequestQueue;
     protected int mColorSuccess, mColorFailure;
-    protected DrawerLayout mLayoutDrawer;
-    protected ListView mListViewDrawerLeft;
+    protected DrawerLayout mDrawerLayout;
+    protected ListView mDrawerList;
     protected ActionBarDrawerToggle mDrawerToggle;
     protected ArrayList<String> mCommandTypes;
 
@@ -54,33 +57,54 @@ public class MainActivity extends Activity implements View.OnClickListener, List
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-        Button btnStartSpeechRecognition = (Button) findViewById(R.id.btnStartVoiceRecognition);
+        Button btnStartSpeechRecognition = (Button) findViewById(R.id.button_beckon);
         btnStartSpeechRecognition.setOnClickListener(this);
-        mTextViewCommand = (TextView) findViewById(R.id.textViewCommand);
-        mTextViewStatus = (TextView) findViewById(R.id.textViewStatus);
+        mTextViewCommand = (TextView) findViewById(R.id.text_view_command);
+        mTextViewStatus = (TextView) findViewById(R.id.text_view_status);
         mRecognizer = SpeechRecognizer.createSpeechRecognizer(this);
         mRecognizer.setRecognitionListener(new MyListener());
         mRequestQueue = Volley.newRequestQueue(this);
         mColorSuccess = Color.parseColor("#aaffaa");
         mColorFailure = Color.parseColor("#ffaaaa");
 
-        mLayoutDrawer = (DrawerLayout) findViewById(R.id.layoutDrawer);
-        mListViewDrawerLeft = (ListView) findViewById(R.id.listViewDrawerLeft);
-        mCommandTypes = new ArrayList<>(CommandType.commandTypeNames.values());
-        mListViewDrawerLeft.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_list_item_1, mCommandTypes));
-        mListViewDrawerLeft.setOnItemClickListener(this);
+        mDrawerLayout = (DrawerLayout) findViewById(R.id.layout_drawer);
+        mDrawerList = (ListView) findViewById(R.id.list_view_drawer);
 
-        mDrawerToggle = new ActionBarDrawerToggle(this, mLayoutDrawer, R.drawable.ic_launcher, R.string.drawer_open, R.string.drawer_close) {
+        mDrawerLayout.setDrawerShadow(R.drawable.drawer_shadow, GravityCompat.START);
+        mCommandTypes = new ArrayList<>(CommandType.commandTypeNames.values());
+        mDrawerList.setAdapter(
+                new ArrayAdapter<>(this, android.R.layout.simple_list_item_1, mCommandTypes));
+        mDrawerList.setOnItemClickListener(this);
+
+        mDrawerToggle = new ActionBarDrawerToggle(
+                this,
+                mDrawerLayout,
+                R.drawable.ic_drawer,
+                R.string.drawer_open,
+                R.string.drawer_close) {
+            public void onDrawerClosed(View view) {
+            }
+            public void onDrawerOpened(View view) {
+            }
         };
 
-        mLayoutDrawer.setDrawerListener(mDrawerToggle);
-        getActionBar().setDisplayHomeAsUpEnabled(true);
-        getActionBar().setHomeButtonEnabled(true);
+        mDrawerLayout.setDrawerListener(mDrawerToggle);
+        ActionBar actionBar = getActionBar();
+        if (actionBar != null) {
+            getActionBar().setDisplayHomeAsUpEnabled(true);
+            getActionBar().setHomeButtonEnabled(true);
+        }
     }
 
     @Override
     public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
         Log.d("MainActivity", "clicked on " + mCommandTypes.get(position));
+    }
+
+    @Override
+    protected void onPostCreate(Bundle savedInstanceState) {
+        super.onPostCreate(savedInstanceState);
+        mDrawerToggle.syncState();
     }
 
     class MyListener implements RecognitionListener {
@@ -113,11 +137,13 @@ public class MainActivity extends Activity implements View.OnClickListener, List
         public void onError(int i) {
             mTextViewStatus.setBackgroundColor(mColorFailure);
             mTextViewStatus.setText("error " + i);
+            mTextViewCommand.setText("");
         }
 
         @Override
         public void onResults(Bundle bundle) {
-            ArrayList<String> data = bundle.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
+            ArrayList<String> data =
+                    bundle.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
             String resultString = (data.size() > 0) ? data.get(0) : "";
             executeVoiceCommand(resultString);
         }
@@ -154,17 +180,33 @@ public class MainActivity extends Activity implements View.OnClickListener, List
         executeCommand(command);
     }
 
-    public void executeRequest(String url, final CommandRequestListener<JSONObject> commandRequestListener) {
-        this.executeRequest(url, commandRequestListener, JSONObject.class,  JsonObjectRequest.class);
+    public void executeRequest(String url,
+                               final CommandRequestListener<JSONObject> commandRequestListener) {
+        this.executeRequest(
+                url,
+                commandRequestListener,
+                JSONObject.class,
+                JsonObjectRequest.class);
     }
 
-    public <T, V extends Request<?>> void executeRequest(String url, final CommandRequestListener<T> commandRequestListener, Class<T> objectClass, Class<V> requestClass) {
+    public <T, V extends Request<?>> void executeRequest(
+            String url,
+            final CommandRequestListener<T> commandRequestListener,
+            Class<T> objectClass,
+            Class<V> requestClass) {
         mTextViewStatus.setBackgroundColor(getResources().getColor(android.R.color.transparent));
         mTextViewStatus.setText("making request");
         try {
-            Class[] argTypes = new Class[] { int.class, String.class, objectClass, Response.Listener.class, Response.ErrorListener.class };
+            Class[] argTypes = new Class[] {
+                    int.class,
+                    String.class,
+                    objectClass,
+                    Response.Listener.class,
+                    Response.ErrorListener.class
+            };
             Constructor<V> constructor = requestClass.getDeclaredConstructor(argTypes);
-            V request = constructor.newInstance(Request.Method.GET, url, null, new Response.Listener<T>() {
+            V request = constructor.newInstance(
+                    Request.Method.GET, url, null, new Response.Listener<T>() {
                 @Override
                 public void onResponse(T element) {
                     mTextViewStatus.setBackgroundColor(mColorSuccess);
@@ -183,9 +225,13 @@ public class MainActivity extends Activity implements View.OnClickListener, List
                     }
                 }
             });
-            request.setRetryPolicy(new DefaultRetryPolicy(30000, 0, DefaultRetryPolicy.DEFAULT_BACKOFF_MULT));
+            request.setRetryPolicy(
+                    new DefaultRetryPolicy(30000, 0, DefaultRetryPolicy.DEFAULT_BACKOFF_MULT));
             mRequestQueue.add((Request<?>)request);
-        } catch (InstantiationException | IllegalAccessException | NoSuchMethodException | InvocationTargetException e) {
+        } catch (InstantiationException
+                | IllegalAccessException
+                | NoSuchMethodException
+                | InvocationTargetException e) {
             mTextViewStatus.setBackgroundColor(mColorFailure);
             mTextViewStatus.setText("error occurred");
             Log.e("executeRequest", e.toString());
@@ -237,8 +283,8 @@ public class MainActivity extends Activity implements View.OnClickListener, List
             }
         } else {
             mTextViewStatus.setBackgroundColor(mColorFailure);
-            mTextViewCommand.setText("");
             mTextViewStatus.setText("command not recognized");
+            mTextViewCommand.setText("");
         }
     }
 
@@ -322,15 +368,19 @@ public class MainActivity extends Activity implements View.OnClickListener, List
         int id = item.getItemId();
         if (id == R.id.action_settings) {
             return true;
+        } else if (mDrawerToggle.onOptionsItemSelected(item)) {
+            return true;
         }
         return super.onOptionsItemSelected(item);
     }
 
     @Override
     public void onClick(View view) {
-        if (view.getId() == R.id.btnStartVoiceRecognition) {
+        if (view.getId() == R.id.button_beckon) {
             Intent intent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
-            intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
+            intent.putExtra(
+                    RecognizerIntent.EXTRA_LANGUAGE_MODEL,
+                    RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
             mRecognizer.startListening(intent);
         }
     }
