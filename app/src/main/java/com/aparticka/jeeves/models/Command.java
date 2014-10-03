@@ -8,10 +8,11 @@ import java.util.Map;
 /**
  * Created by Adam on 10/1/2014.
  */
-public class VoiceCommand {
+public class Command {
 
     protected int command;
     protected String argument;
+    protected int commandType;
 
     public static final int COMMAND_PLAY = 0;
     public static final int COMMAND_PLAY_TRACK = 1;
@@ -45,6 +46,13 @@ public class VoiceCommand {
     }
     public void setArgument(String argument) {
         this.argument = argument;
+    }
+
+    public int getCommandType() {
+        return this.commandType;
+    }
+    public void setCommandType(int commandType) {
+        this.commandType = commandType;
     }
 
     public String getCommandName(int command) {

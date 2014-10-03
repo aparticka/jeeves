@@ -10,6 +10,7 @@ import android.speech.RecognizerIntent;
 import android.speech.SpeechRecognizer;
 import android.support.v4.app.ActionBarDrawerToggle;
 import android.support.v4.widget.DrawerLayout;
+import android.util.Log;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
@@ -26,10 +27,13 @@ import com.android.volley.Response;
 import com.android.volley.VolleyError;
 import com.android.volley.toolbox.JsonObjectRequest;
 import com.android.volley.toolbox.Volley;
-import com.aparticka.jeeves.models.VoiceCommand;
+import com.aparticka.jeeves.models.Command;
+import com.aparticka.jeeves.models.CommandType;
 
 import org.json.JSONObject;
 
+import java.lang.reflect.Constructor;
+import java.lang.reflect.InvocationTargetException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
@@ -40,10 +44,11 @@ public class MainActivity extends Activity implements View.OnClickListener, List
     protected SpeechRecognizer mRecognizer;
     protected TextView mTextViewCommand, mTextViewStatus;
     protected RequestQueue mRequestQueue;
-    protected int mColorSuccess, mColorFailure, mColorTransparent;
+    protected int mColorSuccess, mColorFailure;
     protected DrawerLayout mLayoutDrawer;
     protected ListView mListViewDrawerLeft;
     protected ActionBarDrawerToggle mDrawerToggle;
+    protected ArrayList<String> mCommandTypes;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -58,11 +63,11 @@ public class MainActivity extends Activity implements View.OnClickListener, List
         mRequestQueue = Volley.newRequestQueue(this);
         mColorSuccess = Color.parseColor("#aaffaa");
         mColorFailure = Color.parseColor("#ffaaaa");
-        mColorTransparent = Color.parseColor("#00ffffff");
 
         mLayoutDrawer = (DrawerLayout) findViewById(R.id.layoutDrawer);
         mListViewDrawerLeft = (ListView) findViewById(R.id.listViewDrawerLeft);
-        mListViewDrawerLeft.setAdapter(new ArrayAdapter<String>(this, android.R.layout.simple_list_item_1, (String[])VoiceCommand.commandNames.values().toArray(new String[0])));
+        mCommandTypes = new ArrayList<>(CommandType.commandTypeNames.values());
+        mListViewDrawerLeft.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_list_item_1, mCommandTypes));
         mListViewDrawerLeft.setOnItemClickListener(this);
 
         mDrawerToggle = new ActionBarDrawerToggle(this, mLayoutDrawer, R.drawable.ic_launcher, R.string.drawer_open, R.string.drawer_close) {
@@ -75,7 +80,7 @@ public class MainActivity extends Activity implements View.OnClickListener, List
 
     @Override
     public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
-
+        Log.d("MainActivity", "clicked on " + mCommandTypes.get(position));
     }
 
     class MyListener implements RecognitionListener {
@@ -106,7 +111,8 @@ public class MainActivity extends Activity implements View.OnClickListener, List
 
         @Override
         public void onError(int i) {
-            mTextViewStatus.setText("error" + i);
+            mTextViewStatus.setBackgroundColor(mColorFailure);
+            mTextViewStatus.setText("error " + i);
         }
 
         @Override
@@ -144,73 +150,87 @@ public class MainActivity extends Activity implements View.OnClickListener, List
     }
 
     public void executeVoiceCommand(String speechResults) {
-        VoiceCommand command = parseSpeechResults(speechResults);
+        Command command = parseSpeechResults(speechResults);
+        executeCommand(command);
+    }
+
+    public void executeRequest(String url, final CommandRequestListener<JSONObject> commandRequestListener) {
+        this.executeRequest(url, commandRequestListener, JSONObject.class,  JsonObjectRequest.class);
+    }
+
+    public <T, V extends Request<?>> void executeRequest(String url, final CommandRequestListener<T> commandRequestListener, Class<T> objectClass, Class<V> requestClass) {
+        mTextViewStatus.setBackgroundColor(getResources().getColor(android.R.color.transparent));
+        mTextViewStatus.setText("making request");
+        try {
+            Class[] argTypes = new Class[] { int.class, String.class, objectClass, Response.Listener.class, Response.ErrorListener.class };
+            Constructor<V> constructor = requestClass.getDeclaredConstructor(argTypes);
+            V request = constructor.newInstance(Request.Method.GET, url, null, new Response.Listener<T>() {
+                @Override
+                public void onResponse(T element) {
+                    mTextViewStatus.setBackgroundColor(mColorSuccess);
+                    mTextViewStatus.setText("request successful");
+                    if (commandRequestListener != null) {
+                        commandRequestListener.onResponse(element);
+                    }
+                }
+            }, new Response.ErrorListener() {
+                @Override
+                public void onErrorResponse(VolleyError volleyError) {
+                    mTextViewStatus.setBackgroundColor(mColorFailure);
+                    mTextViewStatus.setText("request failed");
+                    if (commandRequestListener != null) {
+                        commandRequestListener.onErrorResponse(volleyError);
+                    }
+                }
+            });
+            request.setRetryPolicy(new DefaultRetryPolicy(30000, 0, DefaultRetryPolicy.DEFAULT_BACKOFF_MULT));
+            mRequestQueue.add((Request<?>)request);
+        } catch (InstantiationException | IllegalAccessException | NoSuchMethodException | InvocationTargetException e) {
+            mTextViewStatus.setBackgroundColor(mColorFailure);
+            mTextViewStatus.setText("error occurred");
+            Log.e("executeRequest", e.toString());
+            e.printStackTrace();
+        }
+    }
+
+    public void commandPlayTrack(String argument) {
+        HashMap<String, String> params = new HashMap<>();
+        params.put("q", argument);
+        executeRequest(getUrl("play-track", params), new CommandRequestListener<JSONObject>() {
+            @Override
+            public void onResponse(JSONObject element) {
+                // do something with the response
+            }
+            @Override
+            public void onErrorResponse(VolleyError error) {
+            }
+        });
+    }
+
+    public void commandPauseTrack() {
+        executeRequest(getUrl("pause"), null);
+    }
+
+    public void commandUnpauseTrack() {
+        executeRequest(getUrl("unpause"), null);
+    }
+
+    public void executeCommand(Command command) {
         if (command != null) {
             mTextViewCommand.setText(command.toString());
-            JsonObjectRequest request;
             switch (command.getCommand()) {
-                case VoiceCommand.COMMAND_PLAY_TRACK:
-                    HashMap<String, String> params = new HashMap<String, String>();
-                    params.put("q", command.getArgument());
-                    mTextViewStatus.setBackgroundColor(mColorTransparent);
-                    mTextViewStatus.setText("making request");
-                    request = new JsonObjectRequest(Request.Method.GET, getUrl("play-track", params), null, new Response.Listener<JSONObject>() {
-                        @Override
-                        public void onResponse(JSONObject jsonObject) {
-                            mTextViewStatus.setBackgroundColor(mColorSuccess);
-                            mTextViewStatus.setText("request successful");
-                        }
-                    }, new Response.ErrorListener() {
-                        @Override
-                        public void onErrorResponse(VolleyError volleyError) {
-                            mTextViewStatus.setBackgroundColor(mColorFailure);
-                            mTextViewStatus.setText("request failed");
-                        }
-                    });
-                    request.setRetryPolicy(new DefaultRetryPolicy(30000, 0, DefaultRetryPolicy.DEFAULT_BACKOFF_MULT));
-                    mRequestQueue.add(request);
+                case Command.COMMAND_PLAY_TRACK:
+                    commandPlayTrack(command.getArgument());
                     break;
-                case VoiceCommand.COMMAND_PAUSE:
-                    mTextViewStatus.setBackgroundColor(mColorTransparent);
-                    mTextViewStatus.setText("making request");
-                    request = new JsonObjectRequest(Request.Method.GET, getUrl("pause"), null, new Response.Listener<JSONObject>() {
-                        @Override
-                        public void onResponse(JSONObject jsonObject) {
-                            mTextViewStatus.setBackgroundColor(mColorSuccess);
-                            mTextViewStatus.setText("request successful");
-                        }
-                    }, new Response.ErrorListener() {
-                        @Override
-                        public void onErrorResponse(VolleyError volleyError) {
-                            mTextViewStatus.setBackgroundColor(mColorFailure);
-                            mTextViewStatus.setText("request failed");
-                        }
-                    });
-                    request.setRetryPolicy(new DefaultRetryPolicy(30000, 0, DefaultRetryPolicy.DEFAULT_BACKOFF_MULT));
-                    mRequestQueue.add(request);
+                case Command.COMMAND_PAUSE:
+                    commandPauseTrack();
                     break;
-                case VoiceCommand.COMMAND_UNPAUSE:
-                    mTextViewStatus.setBackgroundColor(mColorTransparent);
-                    mTextViewStatus.setText("making request");
-                    request = new JsonObjectRequest(Request.Method.GET, getUrl("unpause"), null, new Response.Listener<JSONObject>() {
-                        @Override
-                        public void onResponse(JSONObject jsonObject) {
-                            mTextViewStatus.setBackgroundColor(mColorSuccess);
-                            mTextViewStatus.setText("request successful");
-                        }
-                    }, new Response.ErrorListener() {
-                        @Override
-                        public void onErrorResponse(VolleyError volleyError) {
-                            mTextViewStatus.setBackgroundColor(mColorFailure);
-                            mTextViewStatus.setText("request failed");
-                        }
-                    });
-                    request.setRetryPolicy(new DefaultRetryPolicy(30000, 0, DefaultRetryPolicy.DEFAULT_BACKOFF_MULT));
-                    mRequestQueue.add(request);
+                case Command.COMMAND_UNPAUSE:
+                    commandUnpauseTrack();
                     break;
-                case VoiceCommand.COMMAND_PLAY_ARTIST:
-                case VoiceCommand.COMMAND_PLAY_ALBUM:
-                case VoiceCommand.COMMAND_PLAY:
+                case Command.COMMAND_PLAY_ARTIST:
+                case Command.COMMAND_PLAY_ALBUM:
+                case Command.COMMAND_PLAY:
                     mTextViewStatus.setBackgroundColor(mColorFailure);
                     mTextViewStatus.setText("command not implemented yet");
                     break;
@@ -228,8 +248,8 @@ public class MainActivity extends Activity implements View.OnClickListener, List
         return results;
     }
 
-    public VoiceCommand parseSpeechResults(String results) {
-        VoiceCommand command = new VoiceCommand();
+    public Command parseSpeechResults(String results) {
+        Command command = new Command();
         results = formatSpeechResults(results);
         String[] splitResults = results.split(" ");
         int numWords = splitResults.length;
@@ -240,19 +260,20 @@ public class MainActivity extends Activity implements View.OnClickListener, List
                         int start = 0;
                         switch (splitResults[1]) {
                             case "song":
+                            case "songs":
                             case "track":
-                                command.setCommand(VoiceCommand.COMMAND_PLAY_TRACK);
+                                command.setCommand(Command.COMMAND_PLAY_TRACK);
                                 break;
                             case "artist":
                             case "band":
-                                command.setCommand(VoiceCommand.COMMAND_PLAY_ARTIST);
+                                command.setCommand(Command.COMMAND_PLAY_ARTIST);
                                 break;
                             default:
-                                command.setCommand(VoiceCommand.COMMAND_PLAY);
+                                command.setCommand(Command.COMMAND_PLAY);
                                 start = 1;
                                 break;
                         }
-                        if (command.getCommand() != VoiceCommand.COMMAND_PLAY) {
+                        if (command.getCommand() != Command.COMMAND_PLAY) {
                             if (numWords > 2) {
                                 start = 2;
                             } else {
@@ -266,15 +287,15 @@ public class MainActivity extends Activity implements View.OnClickListener, List
                         argument = argument.substring(0, argument.length() - 1);
                         command.setArgument(argument);
                     } else {
-                        command.setCommand(VoiceCommand.COMMAND_UNPAUSE);
+                        command.setCommand(Command.COMMAND_UNPAUSE);
                     }
                     break;
                 case "pause":
                 case "stop":
-                    command.setCommand(VoiceCommand.COMMAND_PAUSE);
+                    command.setCommand(Command.COMMAND_PAUSE);
                     break;
                 case "unpause":
-                    command.setCommand(VoiceCommand.COMMAND_UNPAUSE);
+                    command.setCommand(Command.COMMAND_UNPAUSE);
                     break;
                 default:
                     return null;
