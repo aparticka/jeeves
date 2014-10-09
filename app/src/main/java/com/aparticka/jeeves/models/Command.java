@@ -20,6 +20,10 @@ public class Command {
     public static final int COMMAND_PLAY_ALBUM = 3;
     public static final int COMMAND_PAUSE = 20;
     public static final int COMMAND_UNPAUSE = 21;
+    public static final int COMMAND_PREV = 22;
+    public static final int COMMAND_NEXT = 23;
+    public static final int COMMAND_SET_MODE = 100;
+    public static final int COMMAND_SET_VOLUME = 101;
 
     public static final Map<Integer, String> commandNames;
 
@@ -31,6 +35,10 @@ public class Command {
         copyMap.put(COMMAND_PLAY_ALBUM, "play album");
         copyMap.put(COMMAND_PAUSE, "pause");
         copyMap.put(COMMAND_UNPAUSE, "unpause");
+        copyMap.put(COMMAND_PREV, "previous track");
+        copyMap.put(COMMAND_NEXT, "next track");
+        copyMap.put(COMMAND_SET_MODE, "set mode");
+        copyMap.put(COMMAND_SET_VOLUME, "set volume");
         commandNames = Collections.unmodifiableMap(copyMap);
     }
 

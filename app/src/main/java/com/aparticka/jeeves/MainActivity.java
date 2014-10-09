@@ -2,17 +2,22 @@ package com.aparticka.jeeves;
 
 import android.app.ActionBar;
 import android.app.Activity;
+import android.content.Context;
 import android.content.Intent;
 import android.graphics.Color;
+import android.graphics.drawable.Drawable;
+import android.media.AudioManager;
 import android.net.Uri;
 import android.os.Bundle;
 import android.speech.RecognitionListener;
 import android.speech.RecognizerIntent;
 import android.speech.SpeechRecognizer;
+import android.support.annotation.NonNull;
 import android.support.v4.app.ActionBarDrawerToggle;
 import android.support.v4.view.GravityCompat;
 import android.support.v4.widget.DrawerLayout;
 import android.util.Log;
+import android.view.KeyEvent;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
@@ -31,6 +36,7 @@ import com.android.volley.toolbox.JsonObjectRequest;
 import com.android.volley.toolbox.Volley;
 import com.aparticka.jeeves.models.Command;
 import com.aparticka.jeeves.models.CommandType;
+import com.aparticka.jeeves.models.Mode;
 
 import org.json.JSONObject;
 
@@ -44,21 +50,29 @@ import java.util.Map;
 public class MainActivity extends Activity
         implements View.OnClickListener, ListView.OnItemClickListener {
 
+    protected static final String TAG_MODE = "mode";
+
     protected SpeechRecognizer mRecognizer;
     protected TextView mTextViewCommand, mTextViewStatus;
     protected RequestQueue mRequestQueue;
-    protected int mColorSuccess, mColorFailure;
+    protected int mColorSuccess, mColorFailure, mColorBtnNotSpeaking, mColorBtnSpeaking;
     protected DrawerLayout mDrawerLayout;
     protected ListView mDrawerList;
     protected ActionBarDrawerToggle mDrawerToggle;
     protected ArrayList<String> mCommandTypes;
+    protected int mCurrentMode;
+    protected Menu mMainMenu;
+    protected Button mBtnStartSpeechRecognition;
+    protected AudioManager mAudioManager;
+    protected int mMaxDetachedVolumeLevel;
+    protected boolean mIsListening, mDisregardSpeechErrors;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-        Button btnStartSpeechRecognition = (Button) findViewById(R.id.button_beckon);
-        btnStartSpeechRecognition.setOnClickListener(this);
+        mBtnStartSpeechRecognition = (Button) findViewById(R.id.button_beckon);
+        mBtnStartSpeechRecognition.setOnClickListener(this);
         mTextViewCommand = (TextView) findViewById(R.id.text_view_command);
         mTextViewStatus = (TextView) findViewById(R.id.text_view_status);
         mRecognizer = SpeechRecognizer.createSpeechRecognizer(this);
@@ -66,6 +80,8 @@ public class MainActivity extends Activity
         mRequestQueue = Volley.newRequestQueue(this);
         mColorSuccess = Color.parseColor("#aaffaa");
         mColorFailure = Color.parseColor("#ffaaaa");
+        mColorBtnNotSpeaking = Color.parseColor("#ff333333");
+        mColorBtnSpeaking = Color.parseColor("#ff666666");
 
         mDrawerLayout = (DrawerLayout) findViewById(R.id.layout_drawer);
         mDrawerList = (ListView) findViewById(R.id.list_view_drawer);
@@ -91,9 +107,19 @@ public class MainActivity extends Activity
         mDrawerLayout.setDrawerListener(mDrawerToggle);
         ActionBar actionBar = getActionBar();
         if (actionBar != null) {
-            getActionBar().setDisplayHomeAsUpEnabled(true);
-            getActionBar().setHomeButtonEnabled(true);
+            actionBar.setDisplayHomeAsUpEnabled(true);
+            actionBar.setHomeButtonEnabled(true);
         }
+
+        if (savedInstanceState != null) {
+            mCurrentMode = savedInstanceState.getInt(TAG_MODE);
+        } else {
+            mCurrentMode = Mode.MODE_HOME;
+        }
+
+        mAudioManager = (AudioManager)getSystemService(Context.AUDIO_SERVICE);
+        mMaxDetachedVolumeLevel = mAudioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
+        mIsListening = mDisregardSpeechErrors = false;
     }
 
     @Override
@@ -107,41 +133,73 @@ public class MainActivity extends Activity
         mDrawerToggle.syncState();
     }
 
+    public void setRecognizerListening(boolean isListening) {
+        mIsListening = isListening;
+        mBtnStartSpeechRecognition.setBackgroundColor(
+                isListening ? mColorBtnSpeaking : mColorBtnNotSpeaking);
+    }
+
     class MyListener implements RecognitionListener {
         @Override
         public void onReadyForSpeech(Bundle bundle) {
-
+            setRecognizerListening(true);
         }
 
         @Override
         public void onBeginningOfSpeech() {
-
         }
 
         @Override
         public void onRmsChanged(float v) {
-
         }
 
         @Override
         public void onBufferReceived(byte[] bytes) {
-
         }
 
         @Override
         public void onEndOfSpeech() {
-
         }
 
         @Override
         public void onError(int i) {
-            mTextViewStatus.setBackgroundColor(mColorFailure);
-            mTextViewStatus.setText("error " + i);
-            mTextViewCommand.setText("");
+            Log.e("SpeechRecognizer::onError", String.format("%d", i));
+            setRecognizerListening(false);
+            if (!mDisregardSpeechErrors) {
+                String error;
+                switch (i) {
+                    case SpeechRecognizer.ERROR_SPEECH_TIMEOUT:
+                        error = "no speech input";
+                        break;
+                    case SpeechRecognizer.ERROR_RECOGNIZER_BUSY:
+                        error = "speech recognition busy";
+                        break;
+                    case SpeechRecognizer.ERROR_NO_MATCH:
+                        error = "no recognition result";
+                        break;
+                    case SpeechRecognizer.ERROR_AUDIO:
+                        error = "audio input error";
+                        break;
+                    case SpeechRecognizer.ERROR_NETWORK:
+                    case SpeechRecognizer.ERROR_NETWORK_TIMEOUT:
+                        error = "network error";
+                        break;
+                    case SpeechRecognizer.ERROR_SERVER:
+                        error = "recognition server error";
+                        break;
+                    default:
+                        error = "speech recognition error";
+                        break;
+                }
+                changeStatusFailure(error);
+                mTextViewCommand.setText("");
+            }
+            mDisregardSpeechErrors = false;
         }
 
         @Override
         public void onResults(Bundle bundle) {
+            setRecognizerListening(false);
             ArrayList<String> data =
                     bundle.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
             String resultString = (data.size() > 0) ? data.get(0) : "";
@@ -150,12 +208,10 @@ public class MainActivity extends Activity
 
         @Override
         public void onPartialResults(Bundle bundle) {
-
         }
 
         @Override
         public void onEvent(int i, Bundle bundle) {
-
         }
     }
 
@@ -194,8 +250,7 @@ public class MainActivity extends Activity
             final CommandRequestListener<T> commandRequestListener,
             Class<T> objectClass,
             Class<V> requestClass) {
-        mTextViewStatus.setBackgroundColor(getResources().getColor(android.R.color.transparent));
-        mTextViewStatus.setText("making request");
+        changeStatus("making request");
         try {
             Class[] argTypes = new Class[] {
                     int.class,
@@ -209,8 +264,7 @@ public class MainActivity extends Activity
                     Request.Method.GET, url, null, new Response.Listener<T>() {
                 @Override
                 public void onResponse(T element) {
-                    mTextViewStatus.setBackgroundColor(mColorSuccess);
-                    mTextViewStatus.setText("request successful");
+                    changeStatusSuccess("request successful");
                     if (commandRequestListener != null) {
                         commandRequestListener.onResponse(element);
                     }
@@ -218,8 +272,7 @@ public class MainActivity extends Activity
             }, new Response.ErrorListener() {
                 @Override
                 public void onErrorResponse(VolleyError volleyError) {
-                    mTextViewStatus.setBackgroundColor(mColorFailure);
-                    mTextViewStatus.setText("request failed");
+                    changeStatusFailure("request failed");
                     if (commandRequestListener != null) {
                         commandRequestListener.onErrorResponse(volleyError);
                     }
@@ -232,11 +285,27 @@ public class MainActivity extends Activity
                 | IllegalAccessException
                 | NoSuchMethodException
                 | InvocationTargetException e) {
-            mTextViewStatus.setBackgroundColor(mColorFailure);
-            mTextViewStatus.setText("error occurred");
+            changeStatusFailure("error occurred");
             Log.e("executeRequest", e.toString());
             e.printStackTrace();
         }
+    }
+
+    public void changeStatus(String message) {
+        changeStatus(message, getResources().getColor(android.R.color.transparent));
+    }
+
+    public void changeStatus(String message, int color) {
+        mTextViewStatus.setText(message);
+        mTextViewStatus.setBackgroundColor(color);
+    }
+
+    public void changeStatusSuccess(String message) {
+        changeStatus(message, mColorSuccess);
+    }
+
+    public void changeStatusFailure(String message) {
+        changeStatus(message, mColorFailure);
     }
 
     public void commandPlayTrack(String argument) {
@@ -261,31 +330,229 @@ public class MainActivity extends Activity
         executeRequest(getUrl("unpause"), null);
     }
 
+    public void commandPreviousTrack() {
+        executeRequest(getUrl("prev"), null);
+    }
+
+    public void commandNextTrack() {
+        executeRequest(getUrl("next"), null);
+    }
+
+    public boolean setMode(int mode) {
+        if (!setModeMenuItem(mode)) {
+            return false;
+        }
+        if (mIsListening) {
+            mDisregardSpeechErrors = true;
+            mRecognizer.stopListening();
+        }
+        changeStatusSuccess(String.format("mode [%s] set successfully", Mode.getModeName(mode)));
+        mCurrentMode = mode;
+        return true;
+    }
+
+    public boolean setModeMenuItem(int mode) {
+        MenuItem menuItem = mMainMenu.findItem(R.id.action_mode);
+        Drawable icon;
+        String title;
+        switch (mode) {
+            case Mode.MODE_HOME:
+                icon = getResources().getDrawable(R.drawable.ic_fa_home);
+                title = getString(R.string.action_mode_home);
+                break;
+            case Mode.MODE_DETACHED:
+                icon = getResources().getDrawable(R.drawable.ic_fa_unlink);
+                title = getString(R.string.action_mode_detached);
+                break;
+            default:
+                changeStatusFailure("mode does not exist");
+                return false;
+        }
+        menuItem.setIcon(icon);
+        menuItem.setTitle(title);
+        return true;
+    }
+
     public void executeCommand(Command command) {
         if (command != null) {
             mTextViewCommand.setText(command.toString());
-            switch (command.getCommand()) {
-                case Command.COMMAND_PLAY_TRACK:
-                    commandPlayTrack(command.getArgument());
-                    break;
-                case Command.COMMAND_PAUSE:
-                    commandPauseTrack();
-                    break;
-                case Command.COMMAND_UNPAUSE:
-                    commandUnpauseTrack();
-                    break;
-                case Command.COMMAND_PLAY_ARTIST:
-                case Command.COMMAND_PLAY_ALBUM:
-                case Command.COMMAND_PLAY:
-                    mTextViewStatus.setBackgroundColor(mColorFailure);
-                    mTextViewStatus.setText("command not implemented yet");
-                    break;
+            if (command.getCommand() == Command.COMMAND_SET_MODE) {
+                switch (command.getArgument()) {
+                    case "home":
+                        setMode(Mode.MODE_HOME);
+                        break;
+                    case "detached":
+                    case "phone":
+                    case "mobile":
+                        setMode(Mode.MODE_DETACHED);
+                        break;
+                    default:
+                        commandNotRecognized();
+                        break;
+                }
+            } else {
+                switch (mCurrentMode) {
+                    case Mode.MODE_HOME:
+                        switch (command.getCommand()) {
+                            case Command.COMMAND_PLAY_TRACK:
+                                commandPlayTrack(command.getArgument());
+                                break;
+                            case Command.COMMAND_PAUSE:
+                                commandPauseTrack();
+                                break;
+                            case Command.COMMAND_UNPAUSE:
+                                commandUnpauseTrack();
+                                break;
+                            case Command.COMMAND_PREV:
+                                commandPreviousTrack();
+                                break;
+                            case Command.COMMAND_NEXT:
+                                commandNextTrack();
+                                break;
+                            default:
+                                commandNotImplemented();
+                                break;
+                        }
+                        break;
+                    case Mode.MODE_DETACHED:
+                        switch (command.getCommand()) {
+                            case Command.COMMAND_PAUSE:
+                                commandDetachedPauseTrack();
+                                break;
+                            case Command.COMMAND_UNPAUSE:
+                                commandDetachedUnpauseTrack();
+                                break;
+                            case Command.COMMAND_PREV:
+                                commandDetachedPrevTrack();
+                                break;
+                            case Command.COMMAND_NEXT:
+                                commandDetachedNextTrack();
+                                break;
+                            case Command.COMMAND_SET_VOLUME:
+                                commandDetachedSetVolume(command.getArgument());
+                                break;
+                            default:
+                                commandNotImplemented();
+                                break;
+                        }
+                }
             }
         } else {
-            mTextViewStatus.setBackgroundColor(mColorFailure);
-            mTextViewStatus.setText("command not recognized");
-            mTextViewCommand.setText("");
+            commandNotRecognized();
         }
+    }
+
+    public void commandDetachedPauseTrack() {
+        sendMediaIntent(KeyEvent.KEYCODE_MEDIA_PAUSE);
+    }
+
+    public void commandDetachedUnpauseTrack() {
+        sendMediaIntent(KeyEvent.KEYCODE_MEDIA_PLAY);
+    }
+
+    public void commandDetachedPrevTrack() {
+        sendMediaIntent(KeyEvent.KEYCODE_MEDIA_PREVIOUS);
+    }
+
+    public void commandDetachedNextTrack() {
+        sendMediaIntent(KeyEvent.KEYCODE_MEDIA_NEXT);
+    }
+
+    public String formatVolumeArgument(String arg) {
+        switch (arg) {
+            case "won":
+                return "1";
+            case "to":
+            case "too":
+                return "2";
+            case "free":
+                return "3";
+            case "for":
+                return "4";
+            case "sex":
+                return "6";
+            case "ate":
+                return "8";
+            case "tin":
+                return "10";
+            case "maxed":
+            case "maximum":
+                return "max";
+            case "halve":
+            case "have":
+                return "half";
+            case "muted":
+            case "off":
+                return "mute";
+            case "unmuted":
+            case "on":
+                return "unmute";
+            default:
+                return arg;
+        }
+    }
+
+    public void commandDetachedSetVolume(String arg) {
+        try {
+            int level = Integer.parseInt(arg);
+            if ((level >= 0) && (level <= mMaxDetachedVolumeLevel)) {
+                setDetachedVolume(level);
+            } else {
+                changeStatusFailure(
+                        String.format("invalid volume level [0-%d]", mMaxDetachedVolumeLevel));
+                return;
+            }
+        } catch (NumberFormatException e) {
+            switch (arg) {
+                case "max":
+                    setDetachedVolume(mMaxDetachedVolumeLevel);
+                    break;
+                case "half":
+                    setDetachedVolume(mMaxDetachedVolumeLevel / 2);
+                    break;
+                case "mute":
+                    setDetachedVolumeMuted();
+                    break;
+                case "unmute":
+                    setDetachedVolumeMuted(false);
+                    break;
+                default:
+                    changeStatusFailure("volume command not recognized");
+                    return;
+            }
+        }
+        changeStatusSuccess("volume set successfully");
+    }
+
+    public void setDetachedVolume(int level) {
+        setDetachedVolumeMuted(false);
+        mAudioManager.setStreamVolume(AudioManager.STREAM_MUSIC, level,
+                AudioManager.FLAG_REMOVE_SOUND_AND_VIBRATE);
+    }
+
+    public void setDetachedVolumeMuted() {
+        setDetachedVolumeMuted(true);
+    }
+
+    public void setDetachedVolumeMuted(boolean mute) {
+        mAudioManager.setStreamMute(AudioManager.STREAM_MUSIC, mute);
+    }
+
+    public void sendMediaIntent(int key) {
+        final Intent intent = new Intent(Intent.ACTION_MEDIA_BUTTON);
+        KeyEvent event = new KeyEvent(KeyEvent.ACTION_UP, key);
+        intent.putExtra(Intent.EXTRA_KEY_EVENT, event);
+        this.sendBroadcast(intent);
+        changeStatusSuccess("request successful");
+    }
+
+    public void commandNotImplemented() {
+        changeStatusFailure("command not implemented yet");
+    }
+
+    public void commandNotRecognized() {
+        changeStatusFailure("command not recognized");
+        mTextViewCommand.setText("");
     }
 
     public String formatSpeechResults(String results) {
@@ -343,6 +610,44 @@ public class MainActivity extends Activity
                 case "unpause":
                     command.setCommand(Command.COMMAND_UNPAUSE);
                     break;
+                case "prev":
+                case "previous":
+                case "back":
+                    command.setCommand(Command.COMMAND_PREV);
+                    break;
+                case "next":
+                case "forward":
+                    command.setCommand(Command.COMMAND_NEXT);
+                    break;
+                case "set":
+                    if (numWords > 1) {
+                        switch (splitResults[1]) {
+                            case "mode":
+                                if (numWords > 2) {
+                                    command.setCommand(Command.COMMAND_SET_MODE);
+                                    command.setArgument(splitResults[2]);
+                                } else {
+                                    return null;
+                                }
+                                break;
+                            case "volume":
+                                if (numWords > 2) {
+                                    command.setCommand(Command.COMMAND_SET_VOLUME);
+                                    command.setArgument(formatVolumeArgument(splitResults[2]));
+                                } else {
+                                    return null;
+                                }
+                                break;
+                        }
+                    } else {
+                        return null;
+                    }
+                    break;
+                case "mute":
+                case "unmute":
+                    command.setCommand(Command.COMMAND_SET_VOLUME);
+                    command.setArgument(splitResults[0]);
+                    break;
                 default:
                     return null;
             }
@@ -357,19 +662,28 @@ public class MainActivity extends Activity
     public boolean onCreateOptionsMenu(Menu menu) {
         // Inflate the menu; this adds items to the action bar if it is present.
         getMenuInflater().inflate(R.menu.main, menu);
+        mMainMenu = menu;
+        setModeMenuItem(mCurrentMode);
         return true;
+    }
+
+    public void toggleMode() {
+        if (!setMode(mCurrentMode + 1)) {
+            setMode(Mode.MODE_HOME);
+        }
     }
 
     @Override
     public boolean onOptionsItemSelected(MenuItem item) {
-        // Handle action bar item clicks here. The action bar will
-        // automatically handle clicks on the Home/Up button, so long
-        // as you specify a parent activity in AndroidManifest.xml.
-        int id = item.getItemId();
-        if (id == R.id.action_settings) {
-            return true;
-        } else if (mDrawerToggle.onOptionsItemSelected(item)) {
-            return true;
+        switch (item.getItemId()) {
+            case R.id.action_mode:
+                toggleMode();
+                break;
+            default:
+                if (mDrawerToggle.onOptionsItemSelected(item)) {
+                    return true;
+                }
+                break;
         }
         return super.onOptionsItemSelected(item);
     }
@@ -389,5 +703,27 @@ public class MainActivity extends Activity
     protected void onDestroy() {
         super.onDestroy();
         mRecognizer.destroy();
+    }
+
+    @Override
+    protected void onSaveInstanceState(@NonNull Bundle outState) {
+        outState.putInt(TAG_MODE, mCurrentMode);
+        super.onSaveInstanceState(outState);
+    }
+
+    @Override
+    public void onBackPressed() {
+        boolean actionTaken = false;
+        if (mIsListening) {
+            actionTaken = true;
+            mRecognizer.stopListening();
+        }
+        if (mDrawerLayout.isDrawerVisible(mDrawerList)) {
+            actionTaken = true;
+            mDrawerLayout.closeDrawer(mDrawerList);
+        }
+        if (!actionTaken) {
+            super.onBackPressed();
+        }
     }
 }
